@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+
+# Environment files
+.local.env
+.env
+.env.local
+
+# Reports
+reports/*.md
+reports/*.json
+!reports/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Lock files (optional - uncomment if you want to track)
+# pnpm-lock.yaml
+.claude/
