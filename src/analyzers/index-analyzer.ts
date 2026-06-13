@@ -8,6 +8,7 @@ import type {
 	MissingIndex,
 	UnusedIndex,
 } from "../types";
+import { formatBytes } from "../utils/format";
 
 export class IndexAnalyzer {
 	constructor(
@@ -217,7 +218,7 @@ export class IndexAnalyzer {
 		);
 		if (unusedIndexes.length > 0) {
 			recommendations.push(
-				`Found ${unusedIndexes.length} unused indexes consuming ${this.formatBytes(totalUnusedSize)}. Consider removing them to improve write performance and reduce storage.`,
+				`Found ${unusedIndexes.length} unused indexes consuming ${formatBytes(totalUnusedSize)}. Consider removing them to improve write performance and reduce storage.`,
 			);
 		}
 
@@ -237,18 +238,5 @@ export class IndexAnalyzer {
 		}
 
 		return recommendations;
-	}
-
-	private formatBytes(bytes: number): string {
-		const units = ["B", "KB", "MB", "GB", "TB"];
-		let unitIndex = 0;
-		let size = bytes;
-
-		while (size >= 1024 && unitIndex < units.length - 1) {
-			size /= 1024;
-			unitIndex++;
-		}
-
-		return `${size.toFixed(2)} ${units[unitIndex]}`;
 	}
 }

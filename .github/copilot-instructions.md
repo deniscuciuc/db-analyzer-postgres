@@ -205,10 +205,15 @@ VACUUM (ANALYZE) public.orders;
 ## File layout (for navigation)
 
 ```
-index.ts                          # CLI entry, command dispatch
-src/interactive.ts                # Interactive menu
-src/queries.ts                    # SQL queries
+index.ts                              # CLI entry, bootstrap only
+src/cli/{options,runner}.ts           # CLI parsing and command execution
+src/config/loader.ts                  # Config loading and profile resolution
+src/constants.ts                      # Commands, defaults, watch rules
+src/interactive/{index,display,menus}.ts
+src/queries.ts                        # SQL queries
 src/analyzers/{index,query,table}-analyzer.ts
-src/collectors/stats-collector.ts # Database metrics
-src/reporters/report-generator.ts # Markdown + JSON output
+src/collectors/stats-collector.ts     # Database metrics
+src/reporters/report-generator.ts     # Markdown + JSON output
+src/utils/{format,print}.ts           # Shared formatting and terminal helpers
+src/watch/runner.ts                   # Watch mode loop
 ```

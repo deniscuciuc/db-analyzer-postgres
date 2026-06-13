@@ -9,6 +9,7 @@ import type {
 	SlowQuery,
 	TableStats,
 } from "../types";
+import { formatBytes, formatMs } from "../utils/format";
 import { HtmlReporter } from "./html-reporter";
 
 export class ReportGenerator {
@@ -104,7 +105,7 @@ export class ReportGenerator {
 				0,
 			);
 			issues.push(
-				`- **${report.unusedIndexes.length}** unused indexes consuming **${this.formatBytes(totalSize)}**`,
+				`- **${report.unusedIndexes.length}** unused indexes consuming **${formatBytes(totalSize)}**`,
 			);
 		}
 
@@ -195,7 +196,7 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 				(acc, idx) => acc + idx.sizeBytes,
 				0,
 			);
-			content += `\n**Total space used by unused indexes:** ${this.formatBytes(totalSize)}\n`;
+			content += `\n**Total space used by unused indexes:** ${formatBytes(totalSize)}\n`;
 		} else {
 			content += `No unused indexes found.\n`;
 		}
@@ -308,7 +309,7 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 
 		for (let i = 0; i < topByTime.length; i++) {
 			const q = topByTime[i];
-			content += `#### ${i + 1}. Query (Total: ${this.formatMs(q.totalTime)}, Avg: ${this.formatMs(q.meanTime)}, Calls: ${q.calls.toLocaleString()})\n\n`;
+			content += `#### ${i + 1}. Query (Total: ${formatMs(q.totalTime)}, Avg: ${formatMs(q.meanTime)}, Calls: ${q.calls.toLocaleString()})\n\n`;
 			content += "```sql\n";
 			content += `${q.query}\n`;
 			content += "```\n\n";
@@ -325,8 +326,8 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 			content += `|--------|-------|\n`;
 			content += `| Cache Hit Ratio | ${q.hitRatio}% |\n`;
 			content += `| Rows Returned | ${q.rows.toLocaleString()} |\n`;
-			content += `| Min Time | ${this.formatMs(q.minTime)} |\n`;
-			content += `| Max Time | ${this.formatMs(q.maxTime)} |\n\n`;
+			content += `| Min Time | ${formatMs(q.minTime)} |\n`;
+			content += `| Max Time | ${formatMs(q.maxTime)} |\n\n`;
 		}
 
 		return content;
@@ -441,25 +442,6 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 		if (value <= good) return "Good";
 		if (value <= warn) return "Warning";
 		return "Critical";
-	}
-
-	private formatBytes(bytes: number): string {
-		const units = ["B", "KB", "MB", "GB", "TB"];
-		let unitIndex = 0;
-		let size = bytes;
-
-		while (size >= 1024 && unitIndex < units.length - 1) {
-			size /= 1024;
-			unitIndex++;
-		}
-
-		return `${size.toFixed(2)} ${units[unitIndex]}`;
-	}
-
-	private formatMs(ms: number): string {
-		if (ms < 1000) return `${ms.toFixed(2)} ms`;
-		if (ms < 60000) return `${(ms / 1000).toFixed(2)} s`;
-		return `${(ms / 60000).toFixed(2)} min`;
 	}
 
 	printSummary(report: AnalysisReport): void {

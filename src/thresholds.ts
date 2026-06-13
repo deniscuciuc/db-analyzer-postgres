@@ -1,14 +1,9 @@
+import { SCORE_DEDUCTIONS, THRESHOLDS } from "./constants";
 import type {
 	AnalysisReport,
 	ReportThreshold,
 	ThresholdOverrides,
 } from "./types";
-
-const DEFAULT_THRESHOLDS = {
-	cacheHitRatio: { warning: 95, critical: 90 },
-	indexHitRatio: { warning: 95, critical: 90 },
-	deadTuplesRatio: { warning: 5, critical: 10 },
-} as const;
 
 export interface ResolvedThresholdOverrides {
 	cacheHitRatio: ReportThreshold;
@@ -21,15 +16,15 @@ export function resolveThresholds(
 ): ResolvedThresholdOverrides {
 	return {
 		cacheHitRatio: {
-			...DEFAULT_THRESHOLDS.cacheHitRatio,
+			...THRESHOLDS.cacheHitRatio,
 			...overrides?.cacheHitRatio,
 		},
 		indexHitRatio: {
-			...DEFAULT_THRESHOLDS.indexHitRatio,
+			...THRESHOLDS.indexHitRatio,
 			...overrides?.indexHitRatio,
 		},
 		deadTuplesRatio: {
-			...DEFAULT_THRESHOLDS.deadTuplesRatio,
+			...THRESHOLDS.deadTuplesRatio,
 			...overrides?.deadTuplesRatio,
 		},
 	};
@@ -66,14 +61,14 @@ export function calculateHealthScore(
 			thresholds.cacheHitRatio,
 		) === "critical"
 	) {
-		score -= 20;
+		score -= SCORE_DEDUCTIONS.cacheHitRatioCritical;
 	} else if (
 		getPositiveThresholdStatus(
 			report.metrics.cacheHitRatio,
 			thresholds.cacheHitRatio,
 		) === "warning"
 	) {
-		score -= 10;
+		score -= SCORE_DEDUCTIONS.cacheHitRatioWarning;
 	}
 
 	if (
@@ -82,7 +77,7 @@ export function calculateHealthScore(
 			thresholds.indexHitRatio,
 		) === "critical"
 	) {
-		score -= 15;
+		score -= SCORE_DEDUCTIONS.indexHitRatioCritical;
 	}
 
 	if (
@@ -91,14 +86,14 @@ export function calculateHealthScore(
 			thresholds.deadTuplesRatio,
 		) === "critical"
 	) {
-		score -= 15;
+		score -= SCORE_DEDUCTIONS.deadTuplesCritical;
 	} else if (
 		getInverseThresholdStatus(
 			report.metrics.deadTuplesRatio,
 			thresholds.deadTuplesRatio,
 		) === "warning"
 	) {
-		score -= 5;
+		score -= SCORE_DEDUCTIONS.deadTuplesWarning;
 	}
 
 	if (report.unusedIndexes.length > 10) score -= 10;

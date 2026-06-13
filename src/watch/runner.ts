@@ -1,3 +1,5 @@
+import { WATCH_ALLOWED, WATCH_BLOCKED } from "../constants";
+
 const CLEAR = "\x1Bc";
 
 export interface WatchOptions {
@@ -6,32 +8,14 @@ export interface WatchOptions {
 	runCommand: () => Promise<void>;
 }
 
-const WATCH_ALLOWED = new Set([
-	"health",
-	"connections",
-	"long-running",
-	"blocking",
-	"tables",
-	"vacuum-needed",
-]);
-
-const WATCH_BLOCKED = new Set([
-	"run-vacuum",
-	"vacuum-run",
-	"auto-vacuum",
-	"generate-drop-sql",
-	"create-pg-stat-statements",
-	"drop-pg-stat-statements",
-]);
-
 export function validateWatchCommand(command: string): void {
-	if (WATCH_BLOCKED.has(command)) {
+	if (WATCH_BLOCKED.has(command as never)) {
 		throw new Error(
 			`--watch cannot be used with '${command}' (write operation).`,
 		);
 	}
 
-	if (!WATCH_ALLOWED.has(command)) {
+	if (!WATCH_ALLOWED.has(command as never)) {
 		throw new Error(
 			`--watch is not supported for '${command}'. Supported: ${Array.from(WATCH_ALLOWED).join(", ")}`,
 		);
