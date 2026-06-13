@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-13
+
 ### Added
 
 - PostgreSQL database analyzer CLI with subcommands
@@ -20,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown report generation to `./reports/`
 - JSON output for automation workflows (`-j` flag)
 - GitHub Actions CI workflow (lint, build matrix)
-- GitHub Actions release workflow
+- GitHub Actions publish workflow
 - Dependabot configuration for npm + GitHub Actions
 - MIT license
 - Makefile with common development targets
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report diffing against previous JSON snapshots with delta summaries
 - Watch mode for polling-safe commands with refresh intervals and countdown feedback
 - `pnpm analyze:html` and `pnpm analyze:watch` convenience scripts
+- Global CLI publishing via `npm install -g @deniscuciuc/pg-analyzer` and `npx @deniscuciuc/pg-analyzer`
 
 ### Changed
 

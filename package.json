@@ -1,23 +1,45 @@
 {
-  "name": "@deniscuciuc/db-analyzer-postgres",
+  "name": "@deniscuciuc/pg-analyzer",
   "version": "1.0.0",
-  "description": "PostgreSQL Database Analyzer - tool for analyzing PostgreSQL databases to identify performance issues",
+  "description": "CLI tool that analyzes PostgreSQL databases for performance issues — indexes, slow queries, table bloat, connections and cache health.",
   "keywords": [
     "postgresql",
+    "postgres",
     "database",
     "analyzer",
     "performance",
-    "optimization",
-    "indexes"
+    "cli",
+    "indexes",
+    "slow-queries",
+    "dba",
+    "devops"
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:deniscuciuc/db-analyzer-postgres.git"
+    "url": "git+https://github.com/deniscuciuc/db-analyzer-postgres.git"
+  },
+  "bugs": {
+    "url": "https://github.com/deniscuciuc/db-analyzer-postgres/issues"
   },
   "license": "MIT",
-  "author": "Denis Cuciuc",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "author": "Denis Cuciuc <denis@deniscuciuc.dev>",
+  "homepage": "https://github.com/deniscuciuc/db-analyzer-postgres#readme",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "pg-analyzer": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "analyzerrc.example.json"
+  ],
   "scripts": {
     "start": ". ./.env && npx ts-node index.ts start",
     "analyze": ". ./.env && npx ts-node index.ts",
@@ -37,9 +59,14 @@
     "vacuum:check": ". ./.env && npx ts-node index.ts -j -c vacuum-needed",
     "pg-stat-statements:create": ". ./.env && npx ts-node index.ts -j -c create-pg-stat-statements",
     "pg-stat-statements:drop": ". ./.env && npx ts-node index.ts -j -c drop-pg-stat-statements",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc",
+    "postbuild": "node scripts/add-shebang.js",
     "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "prepublishOnly": "pnpm lint && pnpm build",
+    "release:patch": "npm version patch && git push && git push --tags",
+    "release:minor": "npm version minor && git push && git push --tags",
+    "release:major": "npm version major && git push && git push --tags"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.1.0",

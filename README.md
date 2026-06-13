@@ -1,12 +1,29 @@
 # PostgreSQL Database Analyzer
 
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/@deniscuciuc/pg-analyzer?logo=npm&color=cb3837)](https://www.npmjs.com/package/@deniscuciuc/pg-analyzer)
+[![npm downloads](https://img.shields.io/npm/dm/@deniscuciuc/pg-analyzer)](https://www.npmjs.com/package/@deniscuciuc/pg-analyzer)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/types-TypeScript-3178C6?logo=typescript)](https://www.typescriptlang.org/)
-[![Biome](https://img.shields.io/badge/code_style-Biome-60a5fa?logo=biome)](https://biomejs.dev/)
-[![pnpm](https://img.shields.io/badge/package_manager-pnpm-F69220?logo=pnpm)](https://pnpm.io/)
+[![CI](https://github.com/deniscuciuc/db-analyzer-postgres/actions/workflows/ci.yml/badge.svg)](https://github.com/deniscuciuc/db-analyzer-postgres/actions/workflows/ci.yml)
 
 A CLI tool that analyzes PostgreSQL databases for performance issues: unused / missing / duplicate indexes, foreign keys without indexes, slow queries, table bloat, dead tuples, VACUUM needs, and connection / cache health. Outputs structured JSON for automation or rich Markdown reports for humans.
+
+## Quick start
+
+No installation required:
+
+```bash
+npx @deniscuciuc/pg-analyzer -h localhost -d mydb -U postgres -c health
+npx @deniscuciuc/pg-analyzer -h localhost -d mydb -U postgres -c full --json > report.json
+```
+
+Or install globally:
+
+```bash
+npm install -g @deniscuciuc/pg-analyzer
+pg-analyzer -h your-host -d mydb -U postgres -c health
+```
 
 > **Working with an AI agent?** See [.github/copilot-instructions.md](.github/copilot-instructions.md) for the integrated GitHub Copilot agent workflow and JSON contracts.
 
@@ -16,7 +33,8 @@ A CLI tool that analyzes PostgreSQL databases for performance issues: unused / m
 
 - [Features](#features)
 - [Requirements](#requirements)
-- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Development / local setup](#development--local-setup)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Commands](#commands)
@@ -27,6 +45,7 @@ A CLI tool that analyzes PostgreSQL databases for performance issues: unused / m
 - [Managed PostgreSQL providers](#managed-postgresql-providers)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
+- [Contributing](#contributing)
 
 ---
 
@@ -67,7 +86,7 @@ A CLI tool that analyzes PostgreSQL databases for performance issues: unused / m
 - PostgreSQL 12+
 - (Optional but recommended) `pg_stat_statements` extension for slow-query analysis
 
-## Installation
+## Development / local setup
 
 ```bash
 pnpm install
@@ -330,7 +349,7 @@ Output:
 ## Programmatic usage
 
 ```ts
-import { DatabaseAnalyzer } from "@deniscuciuc/db-analyzer-postgres";
+import { DatabaseAnalyzer } from "@deniscuciuc/pg-analyzer";
 
 const analyzer = new DatabaseAnalyzer({
   host: "localhost",
@@ -415,18 +434,8 @@ db-analyzer-postgres/
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
-
-1. Fork the repo and create a feature branch
-2. Run `pnpm install` to install dependencies
-3. Copy `.env.example` to `.env` and configure your connection
-4. Make your changes and ensure `pnpm lint` passes
-5. Open a pull request
-
-**Coding standards:**
-- TypeScript with strict mode enabled
-- Code formatted with Biome (tab indent, 2-space width)
-- All changes must pass `pnpm lint` and `pnpm build`
+Bug reports, feature requests, and pull requests are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
 
 ## License
 
