@@ -29,6 +29,8 @@
     "analyze:fk": ". ./.env && npx ts-node index.ts -j -c fk-without-indexes",
     "analyze:connections": ". ./.env && npx ts-node index.ts -j -c connections",
     "analyze:config": ". ./.env && npx ts-node index.ts -j -c config",
+    "analyze:html": ". ./.env && npx ts-node index.ts --html -c full",
+    "analyze:watch": ". ./.env && npx ts-node index.ts -c health --watch 30",
     "server:info": ". ./.env && npx ts-node index.ts -j -c server-info",
     "indexes:drop-sql": ". ./.env && npx ts-node index.ts -j -c generate-drop-sql",
     "vacuum": ". ./.env && npx ts-node index.ts -c run-vacuum",

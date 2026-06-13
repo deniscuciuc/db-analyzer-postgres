@@ -9,6 +9,7 @@ dist/
 .local.env
 .env
 .env.local
+.analyzerrc.json
 
 # Reports
 reports/*.md

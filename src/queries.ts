@@ -22,6 +22,9 @@ export const QUERIES = {
         END, 2
       ) as cache_hit_ratio
     FROM pg_statio_user_tables
+    WHERE 1 = 1
+      /* schema_filter */
+      /* table_filter */
   `,
 
 	// Index hit ratio
@@ -34,6 +37,9 @@ export const QUERIES = {
         END, 2
       ) as index_hit_ratio
     FROM pg_statio_user_indexes
+    WHERE 1 = 1
+      /* schema_filter */
+      /* table_filter */
   `,
 
 	// Dead tuples ratio
@@ -46,6 +52,9 @@ export const QUERIES = {
         END, 2
       ) as dead_tuples_ratio
     FROM pg_stat_user_tables
+    WHERE 1 = 1
+      /* schema_filter */
+      /* table_filter */
   `,
 
 	// All indexes with usage statistics
@@ -60,6 +69,9 @@ export const QUERIES = {
       idx_tup_read as tuples_read,
       idx_tup_fetch as tuples_fetched
     FROM pg_stat_user_indexes
+    WHERE 1 = 1
+      /* schema_filter */
+      /* table_filter */
     ORDER BY pg_relation_size(indexrelid) DESC
   `,
 
@@ -86,6 +98,8 @@ export const QUERIES = {
       AND NOT i.indisunique
       AND NOT i.indisprimary
       AND s.schemaname NOT IN ('pg_catalog', 'information_schema')
+      /* schema_filter */
+      /* table_filter */
     ORDER BY pg_relation_size(s.indexrelid) DESC
   `,
 
@@ -114,6 +128,8 @@ export const QUERIES = {
     WHERE seq_scan > $1
       AND n_live_tup > 100
       AND schemaname NOT IN ('pg_catalog', 'information_schema')
+      /* schema_filter */
+      /* table_filter */
     ORDER BY seq_tup_read DESC
   `,
 
@@ -132,6 +148,8 @@ export const QUERIES = {
       JOIN pg_namespace n ON n.oid = t.relnamespace
       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+        /* schema_filter */
+        /* table_filter */
     ),
     index_definitions AS (
       SELECT
@@ -190,6 +208,8 @@ export const QUERIES = {
       END as dead_tuple_ratio
     FROM pg_stat_user_tables
     WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+      /* schema_filter */
+      /* table_filter */
     ORDER BY pg_total_relation_size(relid) DESC
   `,
 
@@ -283,6 +303,8 @@ export const QUERIES = {
     FROM pg_stat_user_tables
     WHERE n_dead_tup > 0
       AND schemaname NOT IN ('pg_catalog', 'information_schema')
+      /* schema_filter */
+      /* table_filter */
     ORDER BY n_dead_tup DESC
     LIMIT 20
   `,
@@ -365,6 +387,8 @@ export const QUERIES = {
       pg_size_pretty(pg_relation_size(relid)) as table_size
     FROM pg_stat_user_tables
     WHERE n_live_tup > 0
+      /* schema_filter */
+      /* table_filter */
     ORDER BY
       CASE
         WHEN (seq_scan + idx_scan) = 0 THEN 0
@@ -402,6 +426,8 @@ export const QUERIES = {
       AND ccu.table_schema = tc.table_schema
     WHERE tc.constraint_type = 'FOREIGN KEY'
       AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+      /* schema_filter */
+      /* table_filter */
       AND NOT EXISTS (
         SELECT 1
         FROM pg_indexes

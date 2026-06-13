@@ -7,6 +7,17 @@ export interface DatabaseConfig {
 	ssl?: boolean | { rejectUnauthorized: boolean };
 }
 
+export interface ReportThreshold {
+	warning: number;
+	critical: number;
+}
+
+export interface ThresholdOverrides {
+	cacheHitRatio?: ReportThreshold;
+	indexHitRatio?: ReportThreshold;
+	deadTuplesRatio?: ReportThreshold;
+}
+
 export interface IndexInfo {
 	schema: string;
 	table: string;
@@ -126,6 +137,8 @@ export interface AnalysisReport {
 	recommendations: string[];
 }
 
+export type FullReport = AnalysisReport;
+
 export interface AnalyzerOptions {
 	includeSystemTables?: boolean;
 	minIndexScans?: number;
@@ -134,6 +147,9 @@ export interface AnalyzerOptions {
 	topQueriesLimit?: number;
 	excludeSchemas?: string[];
 	outputDir?: string;
+	schemas?: string[];
+	tables?: string[];
+	thresholds?: ThresholdOverrides;
 }
 
 export interface VacuumTarget {

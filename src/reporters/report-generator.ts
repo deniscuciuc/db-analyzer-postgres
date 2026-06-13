@@ -1,19 +1,28 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { calculateHealthScore, resolveThresholds } from "../thresholds";
 import type {
 	AnalysisReport,
+	AnalyzerOptions,
 	BloatedTable,
 	DatabaseMetrics,
 	SlowQuery,
 	TableStats,
 } from "../types";
+import { HtmlReporter } from "./html-reporter";
 
 export class ReportGenerator {
-	constructor(private outputDir: string = "./reports") {}
+	constructor(
+		private outputDir: string = "./reports",
+		private options: AnalyzerOptions = {},
+	) {}
 
-	async generateFullReport(report: AnalysisReport): Promise<string> {
-		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const filename = `db-analysis-${timestamp}.md`;
+	async generateFullReport(
+		report: AnalysisReport,
+		timestamp?: string,
+	): Promise<string> {
+		const ts = timestamp ?? new Date().toISOString().replace(/[:.]/g, "-");
+		const filename = `db-analysis-${ts}.md`;
 		const filepath = path.join(this.outputDir, filename);
 
 		const content = this.buildMarkdownReport(report);
@@ -24,13 +33,33 @@ export class ReportGenerator {
 		return filepath;
 	}
 
-	async generateJsonReport(report: AnalysisReport): Promise<string> {
-		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const filename = `db-analysis-${timestamp}.json`;
+	async generateJsonReport(
+		report: AnalysisReport,
+		timestamp?: string,
+	): Promise<string> {
+		const ts = timestamp ?? new Date().toISOString().replace(/[:.]/g, "-");
+		const filename = `db-analysis-${ts}.json`;
 		const filepath = path.join(this.outputDir, filename);
 
 		await this.ensureOutputDir();
 		fs.writeFileSync(filepath, JSON.stringify(report, null, 2));
+
+		return filepath;
+	}
+
+	async generateHtmlReport(
+		report: AnalysisReport,
+		timestamp?: string,
+	): Promise<string> {
+		const ts = timestamp ?? new Date().toISOString().replace(/[:.]/g, "-");
+		const filename = `db-analysis-${ts}.html`;
+		const filepath = path.join(this.outputDir, filename);
+
+		await this.ensureOutputDir();
+		fs.writeFileSync(
+			filepath,
+			HtmlReporter.generate(report, this.options.thresholds),
+		);
 
 		return filepath;
 	}
@@ -121,14 +150,16 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 	}
 
 	private buildMetricsSection(metrics: DatabaseMetrics): string {
+		const thresholds = resolveThresholds(this.options.thresholds);
+
 		return `## Database Metrics
 
 ### Performance Metrics
 | Metric | Value | Status |
 |--------|-------|--------|
-| Cache Hit Ratio | ${metrics.cacheHitRatio}% | ${this.getStatusBadge(metrics.cacheHitRatio, 95, 90)} |
-| Index Hit Ratio | ${metrics.indexHitRatio}% | ${this.getStatusBadge(metrics.indexHitRatio, 95, 90)} |
-| Dead Tuples Ratio | ${metrics.deadTuplesRatio}% | ${this.getStatusBadgeInverse(metrics.deadTuplesRatio, 5, 10)} |
+| Cache Hit Ratio | ${metrics.cacheHitRatio}% | ${this.getStatusBadge(metrics.cacheHitRatio, thresholds.cacheHitRatio.warning, thresholds.cacheHitRatio.critical)} |
+| Index Hit Ratio | ${metrics.indexHitRatio}% | ${this.getStatusBadge(metrics.indexHitRatio, thresholds.indexHitRatio.warning, thresholds.indexHitRatio.critical)} |
+| Dead Tuples Ratio | ${metrics.deadTuplesRatio}% | ${this.getStatusBadgeInverse(metrics.deadTuplesRatio, thresholds.deadTuplesRatio.warning, thresholds.deadTuplesRatio.critical)} |
 
 ### Connection Statistics
 | Metric | Value |
@@ -350,42 +381,43 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 		score: number;
 		issues: string[];
 	} {
-		let score = 100;
 		const issues: string[] = [];
+		const score = calculateHealthScore(report, this.options.thresholds);
+		const thresholds = resolveThresholds(this.options.thresholds);
 
-		if (report.metrics.cacheHitRatio < 90) {
-			score -= 20;
+		if (report.metrics.cacheHitRatio < thresholds.cacheHitRatio.critical) {
 			issues.push("Low cache hit ratio");
-		} else if (report.metrics.cacheHitRatio < 95) {
-			score -= 10;
+		} else if (
+			report.metrics.cacheHitRatio < thresholds.cacheHitRatio.warning
+		) {
+			issues.push("Suboptimal cache hit ratio");
 		}
 
-		if (report.metrics.indexHitRatio < 90) {
-			score -= 15;
+		if (report.metrics.indexHitRatio < thresholds.indexHitRatio.critical) {
 			issues.push("Low index hit ratio");
 		}
 
-		if (report.metrics.deadTuplesRatio > 10) {
-			score -= 15;
+		if (report.metrics.deadTuplesRatio > thresholds.deadTuplesRatio.critical) {
 			issues.push("High dead tuple ratio");
+		} else if (
+			report.metrics.deadTuplesRatio > thresholds.deadTuplesRatio.warning
+		) {
+			issues.push("Moderate dead tuple ratio");
 		}
 
 		if (report.unusedIndexes.length > 10) {
-			score -= 10;
 			issues.push("Many unused indexes");
 		}
 
 		if (report.missingIndexes.length > 5) {
-			score -= 10;
 			issues.push("Tables missing indexes");
 		}
 
 		if (report.slowQueries.length > 10) {
-			score -= 10;
 			issues.push("Many slow queries");
 		}
 
-		return { score: Math.max(0, score), issues };
+		return { score, issues };
 	}
 
 	private getHealthEmoji(score: number): string {

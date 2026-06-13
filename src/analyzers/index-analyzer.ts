@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { applySqlFilters } from "../filter-helpers";
 import { QUERIES } from "../queries";
 import type {
 	AnalyzerOptions,
@@ -15,7 +16,14 @@ export class IndexAnalyzer {
 	) {}
 
 	async getAllIndexes(): Promise<IndexInfo[]> {
-		const result = await this.pool.query(QUERIES.allIndexes);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.allIndexes,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,
@@ -30,7 +38,15 @@ export class IndexAnalyzer {
 
 	async getUnusedIndexes(): Promise<UnusedIndex[]> {
 		const minScans = this.options.minIndexScans ?? 50;
-		const result = await this.pool.query(QUERIES.unusedIndexes, [minScans]);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.unusedIndexes,
+			values: [minScans],
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "s.schemaname",
+			tableColumn: "s.relname",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,
@@ -52,7 +68,15 @@ export class IndexAnalyzer {
 
 	async getMissingIndexes(): Promise<MissingIndex[]> {
 		const minSeqScans = this.options.minSeqScans ?? 100;
-		const result = await this.pool.query(QUERIES.missingIndexes, [minSeqScans]);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.missingIndexes,
+			values: [minSeqScans],
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,
@@ -70,7 +94,14 @@ export class IndexAnalyzer {
 	}
 
 	async getDuplicateIndexes(): Promise<DuplicateIndex[]> {
-		const result = await this.pool.query(QUERIES.duplicateIndexes);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.duplicateIndexes,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "n.nspname",
+			tableColumn: "t.relname",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,
@@ -94,7 +125,14 @@ export class IndexAnalyzer {
 			partialCoverageIndexes: string | null;
 		}[]
 	> {
-		const result = await this.pool.query(QUERIES.foreignKeysWithoutIndexes);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.foreignKeysWithoutIndexes,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "tc.table_schema",
+			tableColumn: "tc.table_name",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,
@@ -118,7 +156,14 @@ export class IndexAnalyzer {
 			tableSize: string;
 		}[]
 	> {
-		const result = await this.pool.query(QUERIES.indexUsageSummary);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.indexUsageSummary,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const result = await this.pool.query(text, values);
 
 		return result.rows.map((row) => ({
 			schema: row.schema,

@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { applySqlFilters } from "../filter-helpers";
 import { QUERIES } from "../queries";
 import type {
 	AnalyzerOptions,
@@ -16,7 +17,14 @@ export class TableAnalyzer {
 	) {}
 
 	async getTableStats(): Promise<TableStats[]> {
-		const result = await this.pool.query(QUERIES.tableStats);
+		const { text, values } = applySqlFilters({
+			query: QUERIES.tableStats,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const result = await this.pool.query(text, values);
 		const excludeSchemas = this.options.excludeSchemas ?? [];
 
 		return result.rows
@@ -40,7 +48,14 @@ export class TableAnalyzer {
 
 	async getBloatedTables(): Promise<BloatedTable[]> {
 		try {
-			const result = await this.pool.query(QUERIES.tableBloat);
+			const { text, values } = applySqlFilters({
+				query: QUERIES.tableBloat,
+				schemas: this.options.schemas,
+				tables: this.options.tables,
+				schemaColumn: "schemaname",
+				tableColumn: "relname",
+			});
+			const result = await this.pool.query(text, values);
 
 			return result.rows
 				.filter((row) => Number.parseFloat(row.bloat_ratio) > 10)

@@ -1,20 +1,48 @@
 import type { Pool } from "pg";
+import { applySqlFilters } from "../filter-helpers";
 import { QUERIES } from "../queries";
+import {
+	getInverseThresholdStatus,
+	getPositiveThresholdStatus,
+	resolveThresholds,
+} from "../thresholds";
 import type { AnalyzerOptions, DatabaseMetrics } from "../types";
 
 export class StatsCollector {
 	constructor(
 		private pool: Pool,
-		_options: AnalyzerOptions = {},
+		private options: AnalyzerOptions = {},
 	) {}
 
 	async getDatabaseMetrics(): Promise<DatabaseMetrics> {
+		const cacheHitQuery = applySqlFilters({
+			query: QUERIES.cacheHitRatio,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const indexHitQuery = applySqlFilters({
+			query: QUERIES.indexHitRatio,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+		const deadTuplesQuery = applySqlFilters({
+			query: QUERIES.deadTuplesRatio,
+			schemas: this.options.schemas,
+			tables: this.options.tables,
+			schemaColumn: "schemaname",
+			tableColumn: "relname",
+		});
+
 		const [metricsResult, cacheResult, indexResult, deadTuplesResult] =
 			await Promise.all([
 				this.pool.query(QUERIES.databaseMetrics),
-				this.pool.query(QUERIES.cacheHitRatio),
-				this.pool.query(QUERIES.indexHitRatio),
-				this.pool.query(QUERIES.deadTuplesRatio),
+				this.pool.query(cacheHitQuery.text, cacheHitQuery.values),
+				this.pool.query(indexHitQuery.text, indexHitQuery.values),
+				this.pool.query(deadTuplesQuery.text, deadTuplesQuery.values),
 			]);
 
 		const metrics = metricsResult.rows[0];
@@ -370,22 +398,36 @@ export class StatsCollector {
 		issues: string[];
 		recommendations: string[];
 	} {
+		const thresholds = resolveThresholds(this.options.thresholds);
 		const issues: string[] = [];
 		const recommendations: string[] = [];
 		let healthScore = 100;
 
-		if (metrics.cacheHitRatio < 90) {
+		const cacheStatus = getPositiveThresholdStatus(
+			metrics.cacheHitRatio,
+			thresholds.cacheHitRatio,
+		);
+		const indexStatus = getPositiveThresholdStatus(
+			metrics.indexHitRatio,
+			thresholds.indexHitRatio,
+		);
+		const deadTuplesStatus = getInverseThresholdStatus(
+			metrics.deadTuplesRatio,
+			thresholds.deadTuplesRatio,
+		);
+
+		if (cacheStatus === "critical") {
 			healthScore -= 20;
 			issues.push(`Low cache hit ratio: ${metrics.cacheHitRatio}%`);
 			recommendations.push(
 				"Consider increasing shared_buffers or optimizing queries to improve cache efficiency.",
 			);
-		} else if (metrics.cacheHitRatio < 95) {
+		} else if (cacheStatus === "warning") {
 			healthScore -= 10;
 			issues.push(`Suboptimal cache hit ratio: ${metrics.cacheHitRatio}%`);
 		}
 
-		if (metrics.indexHitRatio < 90) {
+		if (indexStatus === "critical") {
 			healthScore -= 15;
 			issues.push(`Low index hit ratio: ${metrics.indexHitRatio}%`);
 			recommendations.push(
@@ -393,13 +435,13 @@ export class StatsCollector {
 			);
 		}
 
-		if (metrics.deadTuplesRatio > 10) {
+		if (deadTuplesStatus === "critical") {
 			healthScore -= 15;
 			issues.push(`High dead tuple ratio: ${metrics.deadTuplesRatio}%`);
 			recommendations.push(
 				"Review autovacuum settings and consider manual VACUUM on heavily updated tables.",
 			);
-		} else if (metrics.deadTuplesRatio > 5) {
+		} else if (deadTuplesStatus === "warning") {
 			healthScore -= 5;
 			issues.push(`Moderate dead tuple ratio: ${metrics.deadTuplesRatio}%`);
 		}

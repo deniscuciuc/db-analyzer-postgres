@@ -1,17 +1,23 @@
+import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { IndexAnalyzer } from "./src/analyzers/index-analyzer";
 import { QueryAnalyzer } from "./src/analyzers/query-analyzer";
 import { TableAnalyzer } from "./src/analyzers/table-analyzer";
 import { StatsCollector } from "./src/collectors/stats-collector";
+import { loadConfig, resolveProfile } from "./src/config";
 import { InteractiveCLI } from "./src/interactive";
+import { DiffReporter } from "./src/reporters/diff-reporter";
 import { ReportGenerator } from "./src/reporters/report-generator";
+import { calculateHealthScore } from "./src/thresholds";
 import type {
 	AnalysisReport,
 	AnalyzerOptions,
 	DatabaseConfig,
+	FullReport,
 	VacuumSummary,
 	VacuumTarget,
 } from "./src/types";
+import { runWatchLoop } from "./src/watch";
 
 class DatabaseAnalyzer {
 	private pool: Pool;
@@ -37,6 +43,7 @@ class DatabaseAnalyzer {
 		this.statsCollector = new StatsCollector(this.pool, options);
 		this.reportGenerator = new ReportGenerator(
 			options.outputDir ?? "./reports",
+			options,
 		);
 	}
 
@@ -96,16 +103,24 @@ class DatabaseAnalyzer {
 		return report;
 	}
 
-	async generateReport(report: AnalysisReport): Promise<{
+	async generateReport(
+		report: AnalysisReport,
+		options: { html?: boolean } = {},
+	): Promise<{
 		markdown: string;
 		json: string;
+		html?: string;
 	}> {
-		const [markdown, json] = await Promise.all([
-			this.reportGenerator.generateFullReport(report),
-			this.reportGenerator.generateJsonReport(report),
+		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const [markdown, json, html] = await Promise.all([
+			this.reportGenerator.generateFullReport(report, timestamp),
+			this.reportGenerator.generateJsonReport(report, timestamp),
+			options.html
+				? this.reportGenerator.generateHtmlReport(report, timestamp)
+				: Promise.resolve(undefined),
 		]);
 
-		return { markdown, json };
+		return { markdown, json, html };
 	}
 
 	printSummary(report: AnalysisReport): void {
@@ -278,6 +293,13 @@ async function main() {
 		quiet?: boolean;
 		command?: string;
 		interactive?: boolean;
+		profile?: string;
+		configPath?: string;
+		schemas?: string;
+		tables?: string;
+		compare?: string;
+		html?: boolean;
+		watch?: boolean | string;
 	} = {};
 
 	for (let i = 0; i < args.length; i++) {
@@ -309,6 +331,34 @@ async function main() {
 			case "-o":
 				options.output = args[++i];
 				break;
+			case "--profile":
+				options.profile = args[++i];
+				break;
+			case "--config":
+				options.configPath = args[++i];
+				break;
+			case "--schemas":
+				options.schemas = args[++i];
+				break;
+			case "--tables":
+				options.tables = args[++i];
+				break;
+			case "--compare":
+				options.compare = args[++i];
+				break;
+			case "--html":
+				options.html = true;
+				break;
+			case "--watch": {
+				const nextValue = args[i + 1];
+				if (nextValue && !nextValue.startsWith("-")) {
+					options.watch = nextValue;
+					i++;
+				} else {
+					options.watch = true;
+				}
+				break;
+			}
 			case "--slow-query-threshold":
 				options.slowQueryThreshold = Number.parseInt(args[++i], 10);
 				break;
@@ -343,161 +393,293 @@ async function main() {
 		process.exit(0);
 	}
 
-	// Use environment variables as fallback
-	const config: DatabaseConfig = {
-		host:
-			options.host ?? process.env.DB_HOST ?? process.env.PGHOST ?? "localhost",
-		port:
-			options.port ??
-			Number.parseInt(process.env.DB_PORT ?? process.env.PGPORT ?? "5432", 10),
-		database:
-			options.database ??
-			process.env.DB_NAME ??
-			process.env.PGDATABASE ??
-			"postgres",
-		user:
-			options.user ?? process.env.DB_USER ?? process.env.PGUSER ?? "postgres",
-		password:
-			options.password ??
-			process.env.DB_PASSWORD ??
-			process.env.PGPASSWORD ??
-			"",
-		ssl:
-			(options.ssl ?? process.env.DB_SSL === "true")
-				? { rejectUnauthorized: false }
-				: undefined,
-	};
+	try {
+		const configFile = loadConfig(options.configPath);
+		const profile = resolveProfile(configFile, options.profile);
+		const preferProfile = Boolean(options.profile);
+		const watchInterval = parseWatchInterval(options.watch);
+		if (watchInterval !== undefined && options.json) {
+			throw new Error("--watch cannot be combined with --json.");
+		}
+		const analyzerOptions: AnalyzerOptions = {
+			slowQueryThresholdMs:
+				options.slowQueryThreshold ?? configFile.slowQueryThreshold ?? 100,
+			minIndexScans: options.minIndexScans ?? configFile.minIndexScans ?? 50,
+			topQueriesLimit: 50,
+			outputDir: options.output ?? configFile.output ?? "./reports",
+			schemas: parseListOption(options.schemas),
+			tables: parseListOption(options.tables),
+			thresholds: configFile.thresholds,
+		};
 
-	const analyzerOptions: AnalyzerOptions = {
-		slowQueryThresholdMs: options.slowQueryThreshold ?? 100,
-		minIndexScans: options.minIndexScans ?? 50,
-		topQueriesLimit: 50,
-		outputDir: options.output ?? "./reports",
-	};
+		const envSsl =
+			process.env.DB_SSL === "true" || process.env.PGSSLMODE === "require"
+				? true
+				: undefined;
+		const envPort = process.env.DB_PORT ?? process.env.PGPORT;
+		const resolvedSsl = resolveValue(
+			options.ssl,
+			envSsl,
+			profile.ssl,
+			false,
+			preferProfile,
+		);
 
-	// Interactive mode
-	if (options.interactive) {
-		const pool = new Pool({
-			host: config.host,
-			port: config.port,
-			database: config.database,
-			user: config.user,
-			password: config.password,
-			ssl: config.ssl,
-		});
+		const config: DatabaseConfig = {
+			host: resolveValue(
+				options.host,
+				process.env.DB_HOST ?? process.env.PGHOST,
+				profile.host,
+				"localhost",
+				preferProfile,
+			),
+			port: resolveValue(
+				options.port,
+				envPort ? Number.parseInt(envPort, 10) : undefined,
+				profile.port,
+				5432,
+				preferProfile,
+			),
+			database: resolveValue(
+				options.database,
+				process.env.DB_NAME ?? process.env.PGDATABASE,
+				profile.database,
+				"postgres",
+				preferProfile,
+			),
+			user: resolveValue(
+				options.user,
+				process.env.DB_USER ?? process.env.PGUSER,
+				profile.user,
+				"postgres",
+				preferProfile,
+			),
+			password: resolveValue(
+				options.password,
+				process.env.DB_PASSWORD ?? process.env.PGPASSWORD,
+				profile.password,
+				"",
+				preferProfile,
+			),
+			ssl: resolvedSsl ? { rejectUnauthorized: false } : undefined,
+		};
+
+		if (options.interactive) {
+			const pool = new Pool({
+				host: config.host,
+				port: config.port,
+				database: config.database,
+				user: config.user,
+				password: config.password,
+				ssl: config.ssl,
+			});
+
+			try {
+				const interactive = new InteractiveCLI(pool, analyzerOptions);
+				await interactive.start();
+			} finally {
+				await pool.end();
+			}
+			return;
+		}
+
+		const log = options.quiet || options.json ? () => {} : console.log;
+		log(
+			`\nConnecting to PostgreSQL at ${config.host}:${config.port}/${config.database}...`,
+		);
+
+		const analyzer = new DatabaseAnalyzer(config, analyzerOptions);
 
 		try {
-			const interactive = new InteractiveCLI(pool, analyzerOptions);
-			await interactive.start();
+			if (watchInterval !== undefined) {
+				await runWatchLoop({
+					intervalSeconds: watchInterval,
+					command: options.command ?? "full",
+					runCommand: () =>
+						executeAnalyzerCommand(analyzer, options, analyzerOptions, log),
+				});
+				return;
+			}
+
+			await executeAnalyzerCommand(analyzer, options, analyzerOptions, log);
 		} finally {
-			await pool.end();
+			await analyzer.close();
 		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (options.json) {
+			console.log(JSON.stringify({ success: false, error: message }));
+		} else {
+			console.error("Error during analysis:", message);
+		}
+		process.exit(1);
+	}
+}
+
+async function executeAnalyzerCommand(
+	analyzer: DatabaseAnalyzer,
+	options: {
+		json?: boolean;
+		command?: string;
+		compare?: string;
+		html?: boolean;
+	},
+	analyzerOptions: AnalyzerOptions,
+	log: (...args: unknown[]) => void,
+): Promise<void> {
+	if (options.command && options.command !== "full") {
+		const result = await runCommand(analyzer, options.command);
+		console.log(JSON.stringify(result, null, 2));
 		return;
 	}
 
-	const log = options.quiet || options.json ? () => {} : console.log;
+	const report = await analyzer.analyze();
 
-	log(
-		`\nConnecting to PostgreSQL at ${config.host}:${config.port}/${config.database}...`,
-	);
+	if (options.compare) {
+		const previous = loadPreviousReport(options.compare);
+		DiffReporter.print(
+			DiffReporter.diff(report, previous, analyzerOptions.thresholds),
+			options.json ? console.error : console.log,
+		);
+	}
 
-	const analyzer = new DatabaseAnalyzer(config, analyzerOptions);
+	if (options.json) {
+		const output = {
+			success: true,
+			report,
+			summary: {
+				healthScore: calculateHealthScore(report, analyzerOptions.thresholds),
+				databaseSize: report.metrics.databaseSize,
+				cacheHitRatio: report.metrics.cacheHitRatio,
+				indexHitRatio: report.metrics.indexHitRatio,
+				unusedIndexesCount: report.unusedIndexes.length,
+				missingIndexesCount: report.missingIndexes.length,
+				duplicateIndexesCount: report.duplicateIndexes.length,
+				slowQueriesCount: report.slowQueries.length,
+				bloatedTablesCount: report.bloatedTables.length,
+			},
+			recommendations: report.recommendations,
+		};
+		console.log(JSON.stringify(output, null, 2));
+		return;
+	}
+
+	analyzer.printSummary(report);
+
+	log("\nGenerating reports...");
+	const { markdown, json, html } = await analyzer.generateReport(report, {
+		html: options.html,
+	});
+
+	log("\nReports generated:");
+	log(`  - Markdown: ${markdown}`);
+	log(`  - JSON: ${json}`);
+	if (html) {
+		log(`  - HTML: ${html}`);
+	}
+
+	log("\n--- Additional Information ---\n");
+
+	const fkWithoutIndexes = await analyzer.getForeignKeysWithoutIndexes();
+	if (fkWithoutIndexes.length > 0) {
+		log(`Foreign keys without indexes: ${fkWithoutIndexes.length}`);
+		for (const fk of fkWithoutIndexes.slice(0, 5)) {
+			log(
+				`  - ${fk.table}.${fk.column} -> ${fk.foreignTable}.${fk.foreignColumn}`,
+			);
+			log(`    Suggested: ${fk.suggestedIndex}`);
+		}
+		if (fkWithoutIndexes.length > 5) {
+			log(`  ... and ${fkWithoutIndexes.length - 5} more`);
+		}
+	}
+
+	const longRunning = await analyzer.getLongRunningQueries();
+	if (longRunning.length > 0) {
+		log(`\nLong running queries: ${longRunning.length}`);
+		for (const query of longRunning.slice(0, 3)) {
+			log(
+				`  - PID ${query.pid}: ${query.duration} - ${query.query.substring(0, 50)}...`,
+			);
+		}
+	}
+
+	const blocking = await analyzer.getBlockingQueries();
+	if (blocking.length > 0) {
+		log(`\nBlocking queries detected: ${blocking.length}`);
+		for (const entry of blocking) {
+			log(`  - PID ${entry.blockingPid} blocking PID ${entry.blockedPid}`);
+		}
+	}
+
+	log("\nAnalysis complete!");
+}
+
+function loadPreviousReport(comparePath: string): FullReport {
+	if (!existsSync(comparePath)) {
+		throw new Error(`Compare report not found: ${comparePath}`);
+	}
 
 	try {
-		// Handle specific commands for AI/programmatic use
-		if (options.command) {
-			const result = await runCommand(analyzer, options.command);
-			if (options.json) {
-				console.log(JSON.stringify(result, null, 2));
-			} else {
-				console.log(JSON.stringify(result, null, 2));
-			}
-			return;
+		const parsed = JSON.parse(readFileSync(comparePath, "utf-8")) as unknown;
+		if (
+			typeof parsed === "object" &&
+			parsed !== null &&
+			"report" in parsed &&
+			parsed.report
+		) {
+			return parsed.report as FullReport;
 		}
 
-		// Run full analysis
-		const report = await analyzer.analyze();
-
-		// JSON mode - output only JSON to stdout
-		if (options.json) {
-			const output = {
-				success: true,
-				report,
-				summary: {
-					healthScore: calculateHealthScore(report),
-					databaseSize: report.metrics.databaseSize,
-					cacheHitRatio: report.metrics.cacheHitRatio,
-					indexHitRatio: report.metrics.indexHitRatio,
-					unusedIndexesCount: report.unusedIndexes.length,
-					missingIndexesCount: report.missingIndexes.length,
-					duplicateIndexesCount: report.duplicateIndexes.length,
-					slowQueriesCount: report.slowQueries.length,
-					bloatedTablesCount: report.bloatedTables.length,
-				},
-				recommendations: report.recommendations,
-			};
-			console.log(JSON.stringify(output, null, 2));
-			return;
-		}
-
-		// Print summary to console
-		analyzer.printSummary(report);
-
-		// Generate reports
-		log("\nGenerating reports...");
-		const { markdown, json } = await analyzer.generateReport(report);
-
-		log(`\nReports generated:`);
-		log(`  - Markdown: ${markdown}`);
-		log(`  - JSON: ${json}`);
-
-		// Additional analyses
-		log("\n--- Additional Information ---\n");
-
-		// Foreign keys without indexes
-		const fkWithoutIndexes = await analyzer.getForeignKeysWithoutIndexes();
-		if (fkWithoutIndexes.length > 0) {
-			log(`Foreign keys without indexes: ${fkWithoutIndexes.length}`);
-			for (const fk of fkWithoutIndexes.slice(0, 5)) {
-				log(
-					`  - ${fk.table}.${fk.column} -> ${fk.foreignTable}.${fk.foreignColumn}`,
-				);
-				log(`    Suggested: ${fk.suggestedIndex}`);
-			}
-			if (fkWithoutIndexes.length > 5) {
-				log(`  ... and ${fkWithoutIndexes.length - 5} more`);
-			}
-		}
-
-		// Long running queries
-		const longRunning = await analyzer.getLongRunningQueries();
-		if (longRunning.length > 0) {
-			log(`\nLong running queries: ${longRunning.length}`);
-			for (const q of longRunning.slice(0, 3)) {
-				log(`  - PID ${q.pid}: ${q.duration} - ${q.query.substring(0, 50)}...`);
-			}
-		}
-
-		// Blocking queries
-		const blocking = await analyzer.getBlockingQueries();
-		if (blocking.length > 0) {
-			log(`\nBlocking queries detected: ${blocking.length}`);
-			for (const b of blocking) {
-				log(`  - PID ${b.blockingPid} blocking PID ${b.blockedPid}`);
-			}
-		}
-
-		log("\nAnalysis complete!");
+		return parsed as FullReport;
 	} catch (error) {
-		if (options.json) {
-			console.log(JSON.stringify({ success: false, error: String(error) }));
-		} else {
-			console.error("Error during analysis:", error);
-		}
-		process.exit(1);
-	} finally {
-		await analyzer.close();
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`Could not parse compare report at ${comparePath}: ${message}`,
+		);
 	}
+}
+
+function parseListOption(value?: string): string[] | undefined {
+	const entries = value
+		?.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+
+	return entries && entries.length > 0 ? entries : undefined;
+}
+
+function parseWatchInterval(watch?: boolean | string): number | undefined {
+	if (watch === undefined) {
+		return undefined;
+	}
+
+	const intervalSeconds =
+		watch === true ? 30 : Number.parseInt(String(watch), 10);
+
+	if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+		throw new Error(`Invalid watch interval: ${watch}`);
+	}
+
+	return intervalSeconds;
+}
+
+function resolveValue<T>(
+	cliValue: T | undefined,
+	envValue: T | undefined,
+	profileValue: T | undefined,
+	fallbackValue: T,
+	preferProfile: boolean,
+): T {
+	if (cliValue !== undefined) {
+		return cliValue;
+	}
+
+	if (preferProfile) {
+		return profileValue ?? envValue ?? fallbackValue;
+	}
+
+	return envValue ?? profileValue ?? fallbackValue;
 }
 
 async function runCommand(
@@ -652,23 +834,6 @@ function formatBytes(bytes: number): string {
 	return `${size.toFixed(2)} ${units[unitIndex]}`;
 }
 
-function calculateHealthScore(report: AnalysisReport): number {
-	let score = 100;
-
-	if (report.metrics.cacheHitRatio < 90) score -= 20;
-	else if (report.metrics.cacheHitRatio < 95) score -= 10;
-
-	if (report.metrics.indexHitRatio < 90) score -= 15;
-
-	if (report.metrics.deadTuplesRatio > 10) score -= 15;
-
-	if (report.unusedIndexes.length > 10) score -= 10;
-	if (report.missingIndexes.length > 5) score -= 10;
-	if (report.slowQueries.length > 10) score -= 10;
-
-	return Math.max(0, score);
-}
-
 function printHelp() {
 	console.log(`
 PostgreSQL Database Analyzer (AI-friendly)
@@ -683,7 +848,7 @@ Analyzes PostgreSQL databases to identify:
 - Database health metrics
 
 Usage:
-  npx ts-node tools/db-analyzer/index.ts [options]
+  npx ts-node index.ts [options]
 
 Connection Options:
   -h, --host <host>          Database host (env: DB_HOST/PGHOST)
@@ -692,14 +857,21 @@ Connection Options:
   -U, --user <user>          Database user (env: DB_USER/PGUSER)
   -W, --password <pass>      Database password (env: DB_PASSWORD/PGPASSWORD)
   --ssl                      Enable SSL (env: DB_SSL=true)
+  --profile <name>           Use named profile from .analyzerrc.json
+  --config <path>            Use a custom config file path
 
 Analysis Options:
   --slow-query-threshold <ms>  Slow query threshold in ms (default: 100)
   --min-index-scans <n>        Min scans to consider index "used" (default: 50)
+  --schemas <list>             Comma-separated schemas to analyze
+  --tables <list>              Comma-separated tables to analyze
+  --compare <path>             Compare against a previous JSON report
+  --watch [seconds]            Watch mode (default interval: 30s)
 
 Output Options:
   -o, --output <dir>         Output directory for reports (default: ./reports)
   -j, --json                 Output JSON to stdout (for AI/programmatic use)
+  --html                     Also generate an HTML report
   -q, --quiet                Suppress non-essential output
   -i, --interactive          Interactive mode with menu
   start                      Alias for --interactive
@@ -734,21 +906,30 @@ Note: slow-queries requires pg_stat_statements extension and sufficient privileg
 Examples:
 
   # Full analysis with human-readable output
-  pnpm db:analyze
+  pnpm analyze
 
   # Full analysis with JSON output (for AI)
-  npx ts-node tools/db-analyzer/index.ts --json
+  npx ts-node index.ts --json
 
   # Specific command with JSON (for AI)
-  npx ts-node tools/db-analyzer/index.ts -j -c health
-  npx ts-node tools/db-analyzer/index.ts -j -c unused-indexes
-  npx ts-node tools/db-analyzer/index.ts -j -c slow-queries
+  npx ts-node index.ts -j -c health
+  npx ts-node index.ts -j -c unused-indexes
+  npx ts-node index.ts -j -c slow-queries
 
   # Check health score only
-  npx ts-node tools/db-analyzer/index.ts --json --command health
+  npx ts-node index.ts --json --command health
 
   # Get blocking queries (useful for debugging)
-  npx ts-node tools/db-analyzer/index.ts -j -c blocking
+  npx ts-node index.ts -j -c blocking
+
+  # Generate HTML output
+  npx ts-node index.ts --html -c full
+
+  # Compare with a previous JSON snapshot
+  npx ts-node index.ts --compare ./reports/db-analysis-previous.json
+
+  # Watch health output
+  npx ts-node index.ts -c health --watch 10
 
 AI Integration:
   Use --json flag for structured output that AI can parse.
@@ -761,5 +942,7 @@ AI Integration:
 export { DatabaseAnalyzer };
 export type { AnalysisReport, AnalyzerOptions, DatabaseConfig };
 
-// Run if called directly
-main().catch(console.error);
+// Run only if called directly (not when imported as a module)
+if (require.main === module) {
+	main().catch(console.error);
+}

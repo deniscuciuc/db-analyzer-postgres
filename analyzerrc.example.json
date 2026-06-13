@@ -1,0 +1,25 @@
+{
+  "profiles": {
+    "local": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "mydb",
+      "user": "postgres"
+    },
+    "prod": {
+      "host": "prod.db.internal",
+      "database": "mydb",
+      "user": "readonly",
+      "ssl": true
+    }
+  },
+  "defaultProfile": "local",
+  "thresholds": {
+    "cacheHitRatio": { "warning": 95, "critical": 90 },
+    "indexHitRatio": { "warning": 95, "critical": 90 },
+    "deadTuplesRatio": { "warning": 5, "critical": 10 }
+  },
+  "slowQueryThreshold": 100,
+  "minIndexScans": 50,
+  "output": "./reports"
+}
