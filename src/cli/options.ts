@@ -8,6 +8,10 @@ export interface ParsedOptions extends AnalyzerOptions {
 	user: string;
 	password?: string;
 	ssl: boolean;
+	sslCa?: string;
+	sslNoVerify: boolean;
+	yes: boolean;
+	dryRun: boolean;
 	profile?: string;
 	config?: string;
 	schemas?: string[];
@@ -31,6 +35,9 @@ export function parseOptions(argv = process.argv.slice(2)): ParsedOptions {
 		database: DEFAULTS.database,
 		user: DEFAULTS.user,
 		ssl: false,
+		sslNoVerify: false,
+		yes: false,
+		dryRun: false,
 		command: "full",
 		json: false,
 		quiet: false,
@@ -65,6 +72,21 @@ export function parseOptions(argv = process.argv.slice(2)): ParsedOptions {
 				break;
 			case "--ssl":
 				options.ssl = true;
+				break;
+			case "--ssl-ca":
+				options.ssl = true;
+				options.sslCa = argv[++index];
+				break;
+			case "--ssl-no-verify":
+				options.ssl = true;
+				options.sslNoVerify = true;
+				break;
+			case "--yes":
+			case "-y":
+				options.yes = true;
+				break;
+			case "--dry-run":
+				options.dryRun = true;
 				break;
 			case "--output":
 			case "-o":
@@ -172,7 +194,9 @@ Connection options:
   -d, --database <name>          Database name (env: DB_NAME/PGDATABASE)
   -U, --user <user>              Database user (env: DB_USER/PGUSER)
   -W, --password <pass>          Database password (env: DB_PASSWORD/PGPASSWORD)
-  --ssl                          Enable SSL (env: DB_SSL=true)
+  --ssl                          Enable SSL with certificate verification (env: DB_SSL=true)
+  --ssl-ca <path>                Enable SSL and verify against this CA bundle
+  --ssl-no-verify                Enable SSL without verifying the server certificate
   --profile <name>               Use named profile from .analyzerrc.json
   --config <path>                Use a custom config file path
 
@@ -191,6 +215,10 @@ Output options:
   -q, --quiet                    Suppress non-essential output
   -i, --interactive              Interactive mode with menu
   start                          Alias for --interactive
+
+Safety options:
+  -y, --yes                      Confirm destructive commands (run-vacuum, DDL)
+  --dry-run                      Report what a destructive command would do, without running it
 
 Commands:
   -c, --command <cmd>            Run a specific analysis command

@@ -9,6 +9,7 @@ import type {
 	VacuumSummary,
 	VacuumTarget,
 } from "../types";
+import { quoteQualifiedName } from "../utils/sql";
 
 export class TableAnalyzer {
 	constructor(
@@ -299,7 +300,7 @@ export class TableAnalyzer {
 		options: { analyze?: boolean; full?: boolean } = { analyze: true },
 	): Promise<VacuumResult> {
 		const startTime = Date.now();
-		const fullTableName = `"${schema}"."${table}"`;
+		const fullTableName = quoteQualifiedName(schema, table);
 
 		try {
 			let command = "VACUUM";

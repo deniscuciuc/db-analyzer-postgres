@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import type { ConnectionOptions } from "node:tls";
 import { Pool } from "pg";
 import { parseOptions, toAnalyzerOptions } from "./src/cli/options";
 import { executeCommand } from "./src/cli/runner";
@@ -22,6 +24,25 @@ function resolveValue<T>(
 	}
 
 	return envValue ?? profileValue ?? cliValue ?? fallbackValue;
+}
+
+function buildSslConfig(
+	enabled: boolean,
+	caPath: string | undefined,
+	noVerify: boolean,
+): ConnectionOptions | undefined {
+	if (!enabled) {
+		return undefined;
+	}
+
+	if (caPath) {
+		return { ca: readFileSync(caPath, "utf8") };
+	}
+
+	// Opting out of verification has to be explicit: --ssl alone encrypts *and*
+	// authenticates, so a misconfigured server fails loudly instead of silently
+	// leaving the connection open to interception.
+	return noVerify ? { rejectUnauthorized: false } : {};
 }
 
 async function main(): Promise<void> {
@@ -83,7 +104,14 @@ async function main(): Promise<void> {
 			"",
 			preferProfile,
 		),
-		ssl: ssl ? { rejectUnauthorized: false } : undefined,
+		ssl: buildSslConfig(ssl, options.sslCa, options.sslNoVerify),
+	});
+
+	// pg emits 'error' on idle clients; without a listener Node treats it as an
+	// unhandled error event and kills the process. That is near-certain in watch
+	// mode, which holds the pool open for hours.
+	pool.on("error", (error) => {
+		console.warn(`Postgres pool error: ${error.message}`);
 	});
 
 	const runtimeOptions = {
@@ -143,5 +171,7 @@ async function main(): Promise<void> {
 main().catch((error) => {
 	const message = error instanceof Error ? error.message : String(error);
 	console.error("Error during analysis:", message);
-	process.exit(1);
+	// Set exitCode rather than calling process.exit, which can truncate buffered
+	// stdout — e.g. a large --json report being piped to a file.
+	process.exitCode = 1;
 });

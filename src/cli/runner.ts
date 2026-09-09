@@ -5,11 +5,13 @@ import { IndexAnalyzer } from "../analyzers/index-analyzer";
 import { QueryAnalyzer } from "../analyzers/query-analyzer";
 import { TableAnalyzer } from "../analyzers/table-analyzer";
 import { StatsCollector } from "../collectors/stats-collector";
+import { COMMANDS, DESTRUCTIVE_COMMANDS } from "../constants";
 import { DiffReporter } from "../reporters/diff-reporter";
 import { ReportGenerator } from "../reporters/report-generator";
 import { calculateHealthScore } from "../thresholds";
 import type { AnalysisReport, FullReport } from "../types";
 import { formatBytes } from "../utils/format";
+import { quoteQualifiedName } from "../utils/sql";
 import type { ParsedOptions } from "./options";
 import { toAnalyzerOptions } from "./options";
 
@@ -76,12 +78,37 @@ export async function buildFullReport(
 	};
 }
 
+function assertKnownCommand(command: string): void {
+	if (!(COMMANDS as readonly string[]).includes(command)) {
+		throw new Error(
+			`Unknown command: ${command}. Run --help for the list of commands.`,
+		);
+	}
+}
+
+function assertConfirmedIfDestructive(options: ParsedOptions): void {
+	if (!DESTRUCTIVE_COMMANDS.has(options.command as never)) {
+		return;
+	}
+
+	if (options.dryRun || options.yes) {
+		return;
+	}
+
+	throw new Error(
+		`${options.command} changes server state. Re-run with --yes to confirm, or --dry-run to preview.`,
+	);
+}
+
 export async function executeCommand(
 	pool: Pool,
 	options: ParsedOptions,
 ): Promise<void> {
 	const log = options.quiet || options.json ? () => {} : console.log;
 	const services = createServices(pool, options);
+
+	assertKnownCommand(options.command);
+	assertConfirmedIfDestructive(options);
 
 	if (options.command !== "full") {
 		const result = await runCommand(pool, services, options, log);
@@ -228,6 +255,15 @@ async function runCommand(
 			};
 		}
 		case "run-vacuum": {
+			if (options.dryRun) {
+				const candidates = await services.tables.getTablesNeedingVacuum();
+				return {
+					dryRun: true,
+					tables: candidates,
+					message: `Would VACUUM ANALYZE ${candidates.length} table(s). Re-run with --yes to execute.`,
+				};
+			}
+
 			log("Running VACUUM ANALYZE on tables that need it...\n");
 			const summary = await services.tables.autoVacuum({
 				analyze: true,
@@ -257,6 +293,13 @@ async function runCommand(
 					alreadyExists: true,
 				};
 			}
+			if (options.dryRun) {
+				return {
+					dryRun: true,
+					message:
+						"Would run CREATE EXTENSION pg_stat_statements. Re-run with --yes to execute.",
+				};
+			}
 			await pool.query("CREATE EXTENSION IF NOT EXISTS pg_stat_statements");
 			return {
 				success: true,
@@ -274,6 +317,13 @@ async function runCommand(
 					notExists: true,
 				};
 			}
+			if (options.dryRun) {
+				return {
+					dryRun: true,
+					message:
+						"Would run DROP EXTENSION pg_stat_statements. Re-run with --yes to execute.",
+				};
+			}
 			await pool.query("DROP EXTENSION IF EXISTS pg_stat_statements");
 			return {
 				success: true,
@@ -289,7 +339,7 @@ async function runCommand(
 				scans: index.indexScans,
 				sql:
 					index.dropStatement ??
-					`DROP INDEX CONCURRENTLY IF EXISTS ${index.schema}.${index.index};`,
+					`DROP INDEX CONCURRENTLY IF EXISTS ${quoteQualifiedName(index.schema, index.index)};`,
 			}));
 			const totalSize = indexes.reduce(
 				(accumulator, index) => accumulator + index.sizeBytes,
@@ -307,8 +357,10 @@ async function runCommand(
 		}
 		case "server-info":
 			return { serverInfo: await services.stats.getServerInfo() };
-		default:
+		case "full":
 			return buildFullReport(pool, options);
+		default:
+			throw new Error(`Unsupported command: ${options.command}`);
 	}
 }
 
