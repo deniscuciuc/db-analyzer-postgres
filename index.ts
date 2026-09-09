@@ -3,6 +3,10 @@ import type { ConnectionOptions } from "node:tls";
 import { Pool } from "pg";
 import { parseOptions, toAnalyzerOptions } from "./src/cli/options";
 import { executeCommand } from "./src/cli/runner";
+import {
+	assertConfirmedIfDestructive,
+	assertKnownCommand,
+} from "./src/cli/validate";
 import { loadConfig, resolveProfile } from "./src/config/loader";
 import { DEFAULTS } from "./src/constants";
 import { InteractiveCLI } from "./src/interactive";
@@ -54,6 +58,11 @@ async function main(): Promise<void> {
 	if (options.watch !== undefined && options.json) {
 		throw new Error("--watch cannot be combined with --json.");
 	}
+
+	// Validate before opening a connection so a typo fails immediately rather
+	// than after a connection timeout.
+	assertKnownCommand(options.command);
+	assertConfirmedIfDestructive(options);
 
 	const envSsl =
 		process.env.DB_SSL === "true" || process.env.PGSSLMODE === "require"

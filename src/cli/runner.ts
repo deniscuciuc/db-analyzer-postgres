@@ -5,7 +5,6 @@ import { IndexAnalyzer } from "../analyzers/index-analyzer";
 import { QueryAnalyzer } from "../analyzers/query-analyzer";
 import { TableAnalyzer } from "../analyzers/table-analyzer";
 import { StatsCollector } from "../collectors/stats-collector";
-import { COMMANDS, DESTRUCTIVE_COMMANDS } from "../constants";
 import { DiffReporter } from "../reporters/diff-reporter";
 import { ReportGenerator } from "../reporters/report-generator";
 import { calculateHealthScore } from "../thresholds";
@@ -78,37 +77,12 @@ export async function buildFullReport(
 	};
 }
 
-function assertKnownCommand(command: string): void {
-	if (!(COMMANDS as readonly string[]).includes(command)) {
-		throw new Error(
-			`Unknown command: ${command}. Run --help for the list of commands.`,
-		);
-	}
-}
-
-function assertConfirmedIfDestructive(options: ParsedOptions): void {
-	if (!DESTRUCTIVE_COMMANDS.has(options.command as never)) {
-		return;
-	}
-
-	if (options.dryRun || options.yes) {
-		return;
-	}
-
-	throw new Error(
-		`${options.command} changes server state. Re-run with --yes to confirm, or --dry-run to preview.`,
-	);
-}
-
 export async function executeCommand(
 	pool: Pool,
 	options: ParsedOptions,
 ): Promise<void> {
 	const log = options.quiet || options.json ? () => {} : console.log;
 	const services = createServices(pool, options);
-
-	assertKnownCommand(options.command);
-	assertConfirmedIfDestructive(options);
 
 	if (options.command !== "full") {
 		const result = await runCommand(pool, services, options, log);
