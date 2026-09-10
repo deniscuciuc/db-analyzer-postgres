@@ -1,16 +1,13 @@
 import { readFileSync } from "node:fs";
 import type { ConnectionOptions } from "node:tls";
 import { Pool } from "pg";
-import { parseOptions, toAnalyzerOptions } from "./src/cli/options";
-import { executeCommand } from "./src/cli/runner";
-import {
-	assertConfirmedIfDestructive,
-	assertKnownCommand,
-} from "./src/cli/validate";
-import { loadConfig, resolveProfile } from "./src/config/loader";
-import { DEFAULTS } from "./src/constants";
-import { InteractiveCLI } from "./src/interactive";
-import { runWatchLoop } from "./src/watch/runner";
+import { loadConfig, resolveProfile } from "../config/loader";
+import { DEFAULTS } from "../constants";
+import { InteractiveCLI } from "../interactive";
+import { runWatchLoop } from "../watch/runner";
+import { parseOptions, toAnalyzerOptions } from "./options";
+import { executeCommand } from "./runner";
+import { assertConfirmedIfDestructive, assertKnownCommand } from "./validate";
 
 function resolveValue<T>(
 	cliValue: T | undefined,
