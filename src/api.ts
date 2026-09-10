@@ -149,7 +149,7 @@ export class PostgresAnalyzer {
 	async vacuum(options: { full?: boolean } = {}): Promise<VacuumSummary> {
 		await this.connect();
 
-		const { TableAnalyzer } = await import("./analyzers/table-analyzer");
+		const { TableAnalyzer } = await import("./analyzers/table-analyzer.js");
 		const tables = new TableAnalyzer(this.requirePool(), this.analyzerOptions);
 
 		return tables.autoVacuum({ analyze: true, full: options.full });
