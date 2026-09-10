@@ -1,6 +1,6 @@
 {
   "name": "@deniscuciuc/pg-analyzer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "CLI tool that analyzes PostgreSQL databases for performance issues \u2014 indexes, slow queries, table bloat, connections and cache health.",
   "keywords": [
     "postgresql",
