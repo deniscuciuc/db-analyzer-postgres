@@ -348,23 +348,66 @@ Output:
 
 ## Programmatic usage
 
-```ts
-import { DatabaseAnalyzer } from "@deniscuciuc/pg-analyzer";
+The package has two entry points. Importing it gives you the library and does nothing else;
+the CLI is reached through the `pg-analyzer` binary.
 
-const analyzer = new DatabaseAnalyzer({
+```ts
+import { PostgresAnalyzer } from "@deniscuciuc/pg-analyzer";
+
+const analyzer = new PostgresAnalyzer({
   host: "localhost",
   port: 5432,
   database: "mydb",
   user: "postgres",
-  password: "password",
-  ssl: { rejectUnauthorized: false },
+  password: process.env.PGPASSWORD,
+  outputDir: "./reports",
 });
 
-const report = await analyzer.analyze();
-analyzer.printSummary(report);
-await analyzer.generateReport(report);
-await analyzer.close();
+try {
+  const report = await analyzer.analyze();
+
+  console.log(`Health score: ${analyzer.healthScore(report)}`);
+  for (const index of report.unusedIndexes) {
+    console.log(`Unused: ${index.schema}.${index.index} (${index.size})`);
+  }
+
+  // "markdown" (default), "json" or "html"; returns the path written.
+  const path = await analyzer.generateReport("json", report);
+  console.log(`Report written to ${path}`);
+} finally {
+  await analyzer.close();
+}
 ```
+
+### `PostgresAnalyzer`
+
+| Member | Description |
+|---|---|
+| `new PostgresAnalyzer(options?)` | Opens no connection. See the option table below. |
+| `connect()` | Creates the pool and verifies it can reach the server. Called automatically by `analyze()`; call it directly to surface a connection failure early. |
+| `analyze()` | Runs a full analysis and resolves to an `AnalysisReport`. |
+| `healthScore(report)` | Returns the health score, 0 to 100. |
+| `vacuum({ full? })` | Runs `VACUUM ANALYZE` on the tables that need it. Separate from `analyze()` because it changes server state. |
+| `generateReport(format?, report?)` | Writes a report and resolves to the file path. |
+| `close()` | Ends the pool. Does nothing to a pool you supplied yourself. |
+
+| Option | Default | Description |
+|---|---|---|
+| `host` / `port` | `localhost` / `5432` | |
+| `database` / `user` | `postgres` / `postgres` | |
+| `password` | — | |
+| `ssl` | `false` | TLS with the server certificate verified |
+| `sslCa` | — | Path to a CA bundle; implies `ssl` |
+| `sslRejectUnauthorized` | `true` | Set to `false` to skip verification — this leaves the connection open to interception |
+| `schemas` / `tables` | all | Restrict analysis |
+| `outputDir` | `./reports` | Where `generateReport` writes |
+| `slowQueryThresholdMs` | `100` | |
+| `minIndexScans` | `50` | Below this, an index is considered unused |
+| `thresholds` | built-in | Override the health thresholds |
+| `pool` | — | Use an existing `pg.Pool`; you keep ownership and `close()` will not end it |
+
+The analyzers, collectors, reporters and every report type are exported too, so you can
+assemble a different pipeline — see [`src/index.ts`](src/index.ts) for the full surface.
 
 ---
 
@@ -405,21 +448,29 @@ Or use the npm script: `pnpm pg-stat-statements:create`.
 
 ## Architecture
 
-```
+```text
 db-analyzer-postgres/
-├── index.ts                         # Entry point + CLI
-├── package.json
 ├── src/
-│   ├── types.ts                     # Shared types
+│   ├── cli/main.ts                  # CLI entry point (the `pg-analyzer` binary)
+│   ├── index.ts                     # Library entry point, no side effects
+│   ├── api.ts                       # PostgresAnalyzer, the programmatic API
+│   ├── cli/{options,runner,validate}.ts
+│   ├── config/loader.ts             # Config loading and profile resolution
+│   ├── constants.ts
 │   ├── queries.ts                   # SQL queries
-│   ├── interactive.ts               # Interactive CLI
+│   ├── filter-helpers.ts            # Parameterized schema/table filters
+│   ├── thresholds.ts                # Health scoring
+│   ├── types.ts                     # Shared types
 │   ├── analyzers/
 │   │   ├── index-analyzer.ts
 │   │   ├── query-analyzer.ts
 │   │   └── table-analyzer.ts
 │   ├── collectors/stats-collector.ts
-│   └── reporters/report-generator.ts
-├── .github/copilot-instructions.md  # AI agent workflow
+│   ├── interactive/{index,display,menus}.ts
+│   ├── reporters/{report-generator,html-reporter,diff-reporter}.ts
+│   ├── utils/{format,print,sql}.ts  # sql.ts quotes identifiers
+│   └── watch/runner.ts              # Watch mode loop
+├── tests/                           # Automated tests
 ├── .env.example
 └── reports/                         # Generated reports (gitignored)
 ```

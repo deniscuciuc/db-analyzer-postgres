@@ -9,6 +9,7 @@ import type {
 	UnusedIndex,
 } from "../types";
 import { formatBytes } from "../utils/format";
+import { quoteQualifiedName } from "../utils/sql";
 
 export class IndexAnalyzer {
 	constructor(
@@ -63,7 +64,7 @@ export class IndexAnalyzer {
 			isPrimary: row.is_primary,
 			usageStatus: row.usage_status,
 			indexDefinition: row.index_definition,
-			dropStatement: `DROP INDEX ${row.schema}.${row.index};`,
+			dropStatement: `DROP INDEX ${quoteQualifiedName(row.schema, row.index)};`,
 		}));
 	}
 
@@ -179,7 +180,7 @@ export class IndexAnalyzer {
 
 	private extractColumnsFromDefinition(definition: string): string {
 		const match = definition.match(/\(([^)]+)\)/);
-		return match ? match[1] : "";
+		return match?.[1] ?? "";
 	}
 
 	private extractTypeFromDefinition(definition: string): string {

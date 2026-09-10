@@ -9,6 +9,7 @@ import {
 	printSeparator,
 	printSubBullet,
 } from "../utils/print";
+import { quoteQualifiedName } from "../utils/sql";
 
 type HealthMetrics = {
 	databaseSize: string;
@@ -249,7 +250,7 @@ export function showDropSql(indexes: UnusedIndex[]): void {
 
 	for (const index of indexes) {
 		console.log(
-			`  ${index.dropStatement ?? `DROP INDEX CONCURRENTLY IF EXISTS ${index.schema}.${index.index};`}`,
+			`  ${index.dropStatement ?? `DROP INDEX CONCURRENTLY IF EXISTS ${quoteQualifiedName(index.schema, index.index)};`}`,
 		);
 	}
 }

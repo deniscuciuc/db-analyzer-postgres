@@ -48,6 +48,16 @@ export const WATCH_ALLOWED = new Set<Command>([
 	"vacuum-needed",
 ]);
 
+/**
+ * Commands that change server state. Running one non-interactively requires
+ * --yes; the interactive menus prompt for confirmation instead.
+ */
+export const DESTRUCTIVE_COMMANDS = new Set<Command>([
+	"run-vacuum",
+	"create-pg-stat-statements",
+	"drop-pg-stat-statements",
+]);
+
 export const WATCH_BLOCKED = new Set<Command>([
 	"run-vacuum",
 	"generate-drop-sql",

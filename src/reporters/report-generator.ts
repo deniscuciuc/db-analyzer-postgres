@@ -307,8 +307,7 @@ ${issues.length > 0 ? issues.join("\n") : "- No critical issues found"}
 			.sort((a, b) => b.totalTime - a.totalTime)
 			.slice(0, 10);
 
-		for (let i = 0; i < topByTime.length; i++) {
-			const q = topByTime[i];
+		for (const [i, q] of topByTime.entries()) {
 			content += `#### ${i + 1}. Query (Total: ${formatMs(q.totalTime)}, Avg: ${formatMs(q.meanTime)}, Calls: ${q.calls.toLocaleString()})\n\n`;
 			content += "```sql\n";
 			content += `${q.query}\n`;
