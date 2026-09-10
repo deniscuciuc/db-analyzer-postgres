@@ -1,6 +1,6 @@
 # PostgreSQL Database Analyzer
 
-[![Node.js 20+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js)](https://nodejs.org/)
+[![Node.js 22+](https://img.shields.io/badge/node-20%2B-339933?logo=node.js)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@deniscuciuc/pg-analyzer?logo=npm&color=cb3837)](https://www.npmjs.com/package/@deniscuciuc/pg-analyzer)
 [![npm downloads](https://img.shields.io/npm/dm/@deniscuciuc/pg-analyzer)](https://www.npmjs.com/package/@deniscuciuc/pg-analyzer)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -81,7 +81,7 @@ pg-analyzer -h your-host -d mydb -U postgres -c health
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js 22+
 - pnpm >= 10
 - PostgreSQL 12+
 - (Optional but recommended) `pg_stat_statements` extension for slow-query analysis
