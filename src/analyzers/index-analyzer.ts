@@ -180,7 +180,7 @@ export class IndexAnalyzer {
 
 	private extractColumnsFromDefinition(definition: string): string {
 		const match = definition.match(/\(([^)]+)\)/);
-		return match ? match[1] : "";
+		return match?.[1] ?? "";
 	}
 
 	private extractTypeFromDefinition(definition: string): string {

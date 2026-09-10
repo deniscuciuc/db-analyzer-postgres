@@ -345,8 +345,8 @@ export class TableAnalyzer {
 		const results: VacuumResult[] = [];
 		const startTime = Date.now();
 
-		for (let i = 0; i < tables.length; i++) {
-			const { schema, table } = tables[i];
+		for (const [i, target] of tables.entries()) {
+			const { schema, table } = target;
 			const result = await this.vacuumTable(schema, table, {
 				analyze: options.analyze,
 				full: options.full,
